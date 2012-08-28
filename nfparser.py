@@ -132,7 +132,7 @@ if __name__ == '__main__':
             asname = asdict['as-name']
             bytes = convBytes(asdict['bytes'])
             bps = convBytes(asdict['bps'])
-            print '[AS%-6d] %-42s: % 7.2f%sb / % 7.2f%sbps' % (int(asn), asname, bytes[0], bytes[1], bps[0], bps[1])
+            print '[AS%-6d] %-42s: % 7.2f%sB / % 7.2f%sbps' % (int(asn), asname, bytes[0], bytes[1], bps[0], bps[1])
             # bump counter
             lcount += 1
             
