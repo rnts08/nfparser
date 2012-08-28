@@ -1,0 +1,1 @@
+watch -t -d -n30 /opt/nfparser/nfparser.py
