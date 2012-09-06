@@ -26,7 +26,7 @@ def createFileName():
     elif minutepart == 0:
         minutepart = '55'
         hourpart -= 1
-    return time.strftime('%Y-%m-%d')+'/'+'nfcapd.'+time.strftime('%Y%m%d')+str(hourpart).ljust(2,'0')+str(minutepart)
+    return time.strftime('%Y-%m-%d')+'/'+'nfcapd.'+time.strftime('%Y%m%d')+str(hourpart).rjust(2,'0')+str(minutepart)
 
 # createAsScoreBoard(direction) - creates a scoreboard of current known ases in 'direction'
 # debug: @print_timing
