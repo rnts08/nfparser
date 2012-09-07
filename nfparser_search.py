@@ -21,8 +21,11 @@ def print_timing(func):
 def createFileName():
     hourpart = int(time.strftime('%H'))
     minutepart = int(round(float(time.strftime('%M')),-1))-10
-    if minutepart < 0:
+    if minutepart < -10:
         minutepart = '00'
+    elif minutepart < 0:
+        minutepart = '50'
+        hourpart -= 1
     elif minutepart == 0:
         minutepart = '55'
         hourpart -= 1
