@@ -31,10 +31,10 @@ def createFileName():
 # createAsScoreBoard(direction) - creates a scoreboard of current known ases in 'direction'
 # debug: @print_timing
 def createAsScoreBoard(direction):
-	fdirs = '/var/flow/edge01:edge02'
+    fdirs = '/var/flow/router1:router2:routerN'
 	nfdump = '/usr/bin/nfdump'
 	fname = createFileName()
-	network = '46.226.152.0/21'
+	network = '1.2.3.4/5'
 	AsScoreBoard = []
 
 	# determine direction of traffic flow
