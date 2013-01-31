@@ -8,134 +8,131 @@ import subprocess
 
 # timer with print
 def print_timing(func):
-    def wrapper(*arg):
-        t1 = time.clock()
-        res = func(*arg)
-        t2 = time.clock()
-        print '%s took %0.3fms' % (func.func_name, (t2-t1)*1000.0)
-        return res
-    return wrapper
+	def wrapper(*arg):
+		t1 = time.clock()
+		res = func(*arg)
+		t2 = time.clock()
+		print '%s took %0.3fms' % (func.func_name, (t2-t1)*1000.0)
+		return res
+	return wrapper
 
 # create a dir/filename from date/datetime-strings (dir-fileformat matching nfcapd's)
 # debug: @print_timing
 def createFileName():
     hourpart = int(time.strftime('%H'))
     minutepart = int(round(float(time.strftime('%M')),-1))-10
-    if minutepart < -10:
+    if minutepart < 0:
         minutepart = '00'
-    elif minutepart < 0:
-        minutepart = '50'
-        hourpart -= 1
     elif minutepart == 0:
         minutepart = '55'
         hourpart -= 1
-    return time.strftime('%Y-%m-%d')+'/'+'nfcapd.'+time.strftime('%Y%m%d')+     str(hourpart).rjust(2,'0')+str(minutepart)
+    return time.strftime('%Y-%m-%d')+'/'+'nfcapd.'+time.strftime('%Y%m%d')+     str(hourpart).rjust(2,'0')+ str(minutepart)
 
 # createAsScoreBoard(direction) - creates a scoreboard of current known ases in 'direction'
 # debug: @print_timing
 def createAsScoreBoard(direction):
-    fdirs = ## Something like this: '/var/flow/router1:router2:router3'
-    nfdump = ## Path to Binary: '/usr/bin/nfdump'
-    fname = createFileName()
-    network = ## My Own IP-range '1.2.3.0/24'
-    AsScoreBoard = []
+	fdirs = '/var/flow/edge01:edge02'
+	nfdump = '/usr/bin/nfdump'
+	fname = createFileName()
+	network = '46.226.152.0/21'
+	AsScoreBoard = []
 
-    # determine direction of traffic flow
-    if direction == 'dst':
-        agg_key = 'dstas'
-        net_dir = 'src'
-        fmt_dir = 'das'
-    else:
-        agg_key = 'srcas'
-        net_dir = 'dst'
-        fmt_dir = 'sas'
+	# determine direction of traffic flow
+	if direction == 'dst':
+		agg_key = 'dstas'
+		net_dir = 'src'
+		fmt_dir = 'das'
+	else:
+		agg_key = 'srcas'
+		net_dir = 'dst'
+		fmt_dir = 'sas'
 
-    pcmd = nfdump+" -q -N -A "+agg_key+" -r "+fname+" -M "+fdirs+" -m '"+net_dir+" net "+network+"' -o 'fmt:%"+fmt_dir+", %byt, %bps'"
-    p = subprocess.Popen(pcmd,shell=True,stdout=subprocess.PIPE)
-    for line in p.stdout:
-        if line == '\n': break
-        values = line.split(',')
-        asn = values[0].strip()
-        AsScoreBoard.append({'asn': asn,
-                             'as-name': asToName(asn), 
-                             'bytes': int(values[1].strip()),
-                             'bps': int(values[2].strip())
-                            })
-    return AsScoreBoard
+	pcmd = nfdump+" -q -N -A "+agg_key+" -r "+fname+" -M "+fdirs+" -m '"+net_dir+" net "+network+"' -o 'fmt:%"+fmt_dir+", %byt, %bps'"
+	p = subprocess.Popen(pcmd,shell=True,stdout=subprocess.PIPE)
+	for line in p.stdout:
+		if line == '\n': break
+		values = line.split(',')
+		asn = values[0].strip()
+		AsScoreBoard.append({'asn': asn,
+							 'as-name': asToName(asn), 
+							 'bytes': int(values[1].strip()),
+							 'bps': int(values[2].strip())
+							})
+	return AsScoreBoard
 
 # SortAsScoreBoard - Sort the data by field in order:
 # debug: @print_timing
 def SortAsScoreBoard(data,order='desc',field='bytes'):
-    if order == 'asc':
-        return sorted(data, key=operator.itemgetter(field))
-    else:
-        return sorted(data, key=operator.itemgetter(field), reverse=True)
+	if order == 'asc':
+		return sorted(data, key=operator.itemgetter(field))
+	else:
+		return sorted(data, key=operator.itemgetter(field), reverse=True)
 
 # asToNum(as-number) - returns the as-name from the asnum-map or cyrmu.com
 # debug: @print_timing
 def asToName(asnum,le=40):
-    # filename for the asn-map, could be /tmp
-    tmpf = '/opt/nfparser/asn.map'
-    with open(tmpf) as fh:
-        for line in fh:
-            l = line.split(':')
-            if l[0] == str(asnum):
-                # we found the as in tmpf, return fast!
-                return l[1].rstrip('\n')[:le]
-                break
+	# filename for the asn-map, could be /tmp
+	tmpf = '/opt/nfparser/asn.map'
+	with open(tmpf) as fh:
+		for line in fh:
+			l = line.split(':')
+			if l[0] == str(asnum):
+				# we found the as in tmpf, return fast!
+				return l[1].rstrip('\n')[:le]
+				break
 
-    # no as match was found so we use the internetz(cymru) instead.
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.connect(('whois.cymru.com', 43))
-        s.send(' -f as'+ str(asnum) + '\r\n')
-    except:
-        return 'unknown'
-        pass
-    response = ''
-    while True:
+	# no as match was found so we use the internetz(cymru) instead.
+	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	try:
+		s.connect(('whois.cymru.com', 43))
+		s.send(' -f as'+ str(asnum) + '\r\n')
+	except:
+		return 'unknown'
+		pass
+	response = ''
+	while True:
     		d = s.recv(4096)
-        	response += d
+	    	response += d
     		if d == '':
         		break
-            s.close()
+			s.close()
 
-    if len(response) > 2:
-        with open(tmpf,'a+') as f:
-            f.write(str(asnum)+':'+response)
-            f.close
-    
-    return response[:le].rstrip('\n')
+	if len(response) > 2:
+		with open(tmpf,'a+') as f:
+			f.write(str(asnum)+':'+response)
+			f.close
+	
+	return response[:le].rstrip('\n')
 
 # convBytes(bytes) - convert bytes into human readable bytes with suffix
 # debug: @print_timing
 def convBytes(bytes):
-    bytes = float(bytes)	# make sure it's a float
-    sfix = ['B','K','M','G','T','P']
-    rtimes = 0
-    while (bytes/1024) > 1: 
-        bytes = bytes/1024 
-        rtimes += 1
+	bytes = float(bytes)	# make sure it's a float
+	sfix = ['B','K','M','G','T','P']
+	rtimes = 0
+	while (bytes/1024) > 1: 
+		bytes = bytes/1024 
+		rtimes += 1
 
-    return [round(bytes,2), sfix[rtimes]]
+	return [round(bytes,2), sfix[rtimes]]
 
 # main
 if __name__ == '__main__':
-        if len(sys.argv) < 2:
-                sys.exit('Usage: %s as-number' % sys.argv[0])
+	if len(sys.argv) < 2:
+		sys.exit('Usage: %s as-number' % sys.argv[0])
 
-        print 'Searching for AS'+sys.argv[1]+'...'
-        for dire in ('dst','src'):
-                l = SortAsScoreBoard(createAsScoreBoard(dire))
-                lcount = 0
-                for asdict in l:
-                        if sys.argv[1] == asdict['asn']:
-                                asn = asdict['asn']
-                                asname = asdict['as-name']
-                                bytes = convBytes(asdict['bytes'])
-                                bps = convBytes(asdict['bps'])
-                                print '%s: [AS%-6d] %-42s: % 7.2f%sB / % 7.2f%sbps' % (dire, int(asn), asname, bytes[0], bytes[1], bps[0], bps[1])
-                        lcount += 1
-
-        print 'Searched through '+str(lcount)+' records in '+createFileName()
-
+	print 'Searching for AS'+sys.argv[1]+'...'
+	for dire in ('dst','src'):
+		l = SortAsScoreBoard(createAsScoreBoard(dire))
+		lcount = 0
+		for asdict in l:
+			if sys.argv[1] == asdict['asn']:
+				asn = asdict['asn']
+				asname = asdict['as-name']
+				bytes = convBytes(asdict['bytes'])
+				bps = convBytes(asdict['bps'])
+				print '%s: [AS%-6d] %-42s: % 7.2f%sB / % 7.2f%sbps' % (dire, int(asn), asname, bytes[0], bytes[1], bps[0], bps[1])
+			lcount += 1
+			
+	print 'Searched through '+str(lcount)+' records in '+createFileName()
+			
