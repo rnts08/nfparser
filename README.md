@@ -1,8 +1,26 @@
 nfparser
 ========
 
-In-house script to pull Nx80 terminal formatted data out of nfcapd-files
+This script will pull and format data from nfcapd, update the configuration in the beginning of the script
+and have a go.
 
-NOTE: This is not perfect, especially the createFileName()-part since it plays with hours and minutes to generate a filename with the file-creation lag from nfcapd. I have no idea what happends at 00:00 with that code, but since I use it between 9.00 and 18.00 I dont really care. =)
+Usage: ./nfparser.py        Runs a single nfparser that dumps TopN in each direction. 
 
-Use it as you wish, let me know if you do anything useful with it! 
+Usage: ./nfparser.py 1234   Searches for AS1234 in the last 5 minutes nfcapd files.
+
+New for this version is;
+
+* Consolidated nfparser and nfparser_search
+* New 'createFileName' method that actually checks the directories for the last-1 file
+* Configuration moved to the top of the file
+
+
+TODO:
+
+- Move configuration to configuration file
+- Figure out if the new createFileName is actually better than the old one
+- Drink more beer
+
+NOTE! This script is provided as-as and I'm not responsible for what you might do with it, exploding your routers or crashing harddrives is your problem, not mine. :-)
+
+

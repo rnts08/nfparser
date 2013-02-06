@@ -5,53 +5,97 @@ import socket
 import time
 import operator
 import subprocess
+from string import digits
 
-# timer with print
-def print_timing(func):
-    def wrapper(*arg):
-        t1 = time.clock()
-        res = func(*arg)
-        t2 = time.clock()
-        print '%s took %0.3fms' % (func.func_name, (t2-t1)*1000.0)
-        return res
-    return wrapper
+"""
+ Configuration
+"""
 
-# create a dir/filename from date/datetime-strings (dir-fileformat matching nfcapd's)
-# debug: @print_timing
+""" Number of top-records to show """
+num_top = 15
+
+""" List of our networks """
+networks = ['1.2.3.4/23','4.3.2.1/24']
+
+""" List of interface ID (snmp ifIndex) and names (>=8 char) """
+interfaces = {67:'ge-0/0/7', 55:'NL-IX', 17:'ae0.71'}
+
+""" Netflow data directories """
+netflow_data_dir = '/var/flow/'
+netflow_data_routers = ['routerN', 'routerY']
+
+""" Nfdump binary path """
+nfdump = '/usr/bin/nfdump'
+
+""" ASNumber description file """
+asnumfile = '/tmp/asn.map'
+
+"""
+ Helper methods
+"""
+
 def createFileName():
-    hourpart = int(time.strftime('%H'))
-    minutepart = int(round(float(time.strftime('%M')),-1))-10
-    if minutepart < -10: 
-        minutepart = '00'
-    elif minutepart < 0:
-        minutepart = '50'
-        hourpart -= 1
-    elif minutepart == 0:
-        minutepart = '55'
-        hourpart -= 1
-    return time.strftime('%Y-%m-%d')+'/'+'nfcapd.'+time.strftime('%Y%m%d')+     str(hourpart).rjust(2,'0')+str(minutepart)
+    today = time.strftime('%Y-%m-%d')
+    files = []
+    for directory in os.listdir(netflow_data_dir):
+        if directory in netflow_data_routers:
+            files += os.listdir(netflow_data_dir + directory + '/' + today)
+    return today + '/' + sorted(set(files))[-1]
 
-# createAsScoreBoard(direction) - creates a scoreboard of current known ases in 'direction'
-# debug: @print_timing
-def createAsScoreBoard(direction):
-    fdirs = '/var/flow/router1:router2:routerN'
-    nfdump = '/usr/bin/nfdump'
-    fname = createFileName()
-    network = '1.2.3.4/5'
-    AsScoreBoard = []
+def createDirectoryString():
+    netflow_dir = netflow_data_dir
+    for router in netflow_data_routers:
+        netflow_dir += router + ':'
+    return netflow_dir[:-1]
 
-    # determine direction of traffic flow
+def createNetworkString(net_dir):
+    net_filter_string = ''
+    if len(networks) > 1:
+        for index, network in enumerate(networks):
+            if index == len(networks)-1:
+                net_filter_string += net_dir + ' net ' + network
+            else:
+                net_filter_string += net_dir + ' net ' + network + ' or '
+        return net_filter_string
+    else:
+        return net_dir + ' net '+networks[0]
+
+def convIfIdToName(ifIndex):
+    if ifIndex in interfaces:
+        return interfaces[ifIndex]
+    return 'UNKNOWN'
+
+def convBytesToSi(bytes):
+    bytes = float(bytes)
+    sfix = ['B','K','M','G','T','P']
+    rtimes = 0
+    while (bytes/1024) > 1: 
+        bytes = bytes/1024 
+        rtimes += 1
+
+    return [round(bytes,2), sfix[rtimes]]
+
+def createCommand(direction='dst'):
     if direction == 'dst':
-        agg_key = 'dstas'
+        aggregation_keys = 'dstas,outif'
         net_dir = 'src'
         fmt_dir = 'das'
+        nif = 'out'
     else:
-        agg_key = 'srcas'
+        aggregation_keys = 'srcas,inif'
         net_dir = 'dst'
         fmt_dir = 'sas'
+        nif = 'in'
 
-    pcmd = nfdump+" -q -N -A "+agg_key+" -r "+fname+" -M "+fdirs+" -m '"+net_dir+" net "+network+"' -o 'fmt:%"+fmt_dir+", %byt, %bps'"
-    p = subprocess.Popen(pcmd,shell=True,stdout=subprocess.PIPE)
+    command = nfdump + ' -q -N -A ' + aggregation_keys + ' -r ' + createFileName() + ' -M ' + createDirectoryString() + ' -m \'' + createNetworkString(net_dir) + '\' -o \'fmt: %'+fmt_dir+', %byt, %bps, %'+nif+'\''
+    return command
+
+"""
+ AsScoreBoard + Helpers
+"""
+def createAsScoreBoard(direction):
+    AsScoreBoard = []
+    p = subprocess.Popen(createCommand(direction), shell=True, stdout=subprocess.PIPE)
     for line in p.stdout:
         if line == '\n': break
         values = line.split(',')
@@ -59,23 +103,22 @@ def createAsScoreBoard(direction):
         AsScoreBoard.append({'asn': asn,
                              'as-name': asToName(asn), 
                              'bytes': int(values[1].strip()),
-                             'bps': int(values[2].strip())
-                            })
+                             'bps': int(values[2].strip()),
+                             'if': int(values[3].strip())
+                             })
     return AsScoreBoard
 
-# SortAsScoreBoard - Sort the data by field in order:
-# debug: @print_timing
-def SortAsScoreBoard(data,order='desc',field='bytes'):
+def SortAsScoreBoard(scoreboard, order='desc', field='bytes'):
     if order == 'asc':
-        return sorted(data, key=operator.itemgetter(field))
+        return sorted(scoreboard, key=operator.itemgetter(field))
     else:
-        return sorted(data, key=operator.itemgetter(field), reverse=True)
+        return sorted(scoreboard, key=operator.itemgetter(field), reverse=True)
 
-# asToNum(as-number) - returns the as-name from the asnum-map or cyrmu.com
-# debug: @print_timing
-def asToName(asnum,le=40):
-    # filename for the asn-map, could be /tmp, but I wan't it persistent.
-    tmpf = '/opt/nfparser/asn.map'
+"""
+ ASN Lookup 
+"""
+def asToName(asnum,le=34):
+    tmpf = asnumfile
     with open(tmpf) as fh:
         for line in fh:
             l = line.split(':')
@@ -84,7 +127,6 @@ def asToName(asnum,le=40):
                 return l[1].rstrip('\n')[:le]
                 break
 
-    # no as match was found so we use the internetz(cymru) instead.
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         s.connect(('whois.cymru.com', 43))
@@ -94,48 +136,64 @@ def asToName(asnum,le=40):
         pass
     response = ''
     while True:
-            d = s.recv(4096)
-            response += d
-            if d == '':
+        d = s.recv(4096)
+        response += d
+        if d == '':
                 break
-            s.close()
+                s.close()
 
     if len(response) > 2:
         with open(tmpf,'a+') as f:
             f.write(str(asnum)+':'+response)
             f.close
-    
+
     return response[:le].rstrip('\n')
 
-# convBytes(bytes) - convert bytes into human readable bytes with suffix
-# debug: @print_timing
-def convBytes(bytes):
-    bytes = float(bytes)    # make sure it's a float
-    sfix = ['B','K','M','G','T','P']
-    rtimes = 0
-    while (bytes/1024) > 1: 
-        bytes = bytes/1024 
-        rtimes += 1
-
-    return [round(bytes,2), sfix[rtimes]]
-
-# main
-if __name__ == '__main__':
-    for dire in ('dst','src'):
-        l = SortAsScoreBoard(createAsScoreBoard(dire))
+"""
+ Main function
+"""
+def main():
+    for direction in ('dst','src'):
+        l = SortAsScoreBoard(createAsScoreBoard(direction))
         lcount = 0
-        print 'Top '+dire+' ASN ('+str(len(l))+'):'
+        print '*' * 80
+        print 'Top '+direction+' ASN Interface/Total/Speed ('+str(len(l))+'):'
         for asdict in l:
-            if lcount >= 10:
+            if lcount >= num_top:
                 print ""
                 lcount = 0
                 break
-            # assign, convert & print
+            
             asn = asdict['asn']
             asname = asdict['as-name']
-            bytes = convBytes(asdict['bytes'])
-            bps = convBytes(asdict['bps'])
-            print '[AS%-6d] %-42s: % 7.2f%sB / % 7.2f%sbps' % (int(asn), asname, bytes[0], bytes[1], bps[0], bps[1])
-            # bump counter
+            bytes = convBytesToSi(asdict['bytes'])
+            bps = convBytesToSi(asdict['bps'])
+            real_if = convIfIdToName(asdict['if'])
+            print '[AS%-5d] %-35s: %-7s :% 7.2f%sB / % 7.2f%sbps' % (int(asn), asname, real_if, bytes[0], bytes[1], bps[0], bps[1])
             lcount += 1
-            
+
+def search(search_asn):
+    print 'Searching for AS'+search_asn+'...'
+    for direction in ('dst','src'):
+        l = SortAsScoreBoard(createAsScoreBoard(direction))
+        for asdict in l:
+            if search_asn == asdict['asn']:
+                print 'Found AS'+search_asn+' in the \''+direction+'\' direction'
+                asn = asdict['asn']
+                asname = asdict['as-name']
+                bytes = convBytesToSi(asdict['bytes'])
+                bps = convBytesToSi(asdict['bps'])
+                real_if = convIfIdToName(asdict['if'])
+                print '[AS%-5d] %-35s: %-7s :% 7.2f%sB / % 7.2f%sbps' % (int(asn), asname, real_if, bytes[0], bytes[1], bps[0], bps[1])
+
+"""
+ Program entry
+"""
+if __name__ == '__main__':
+    if len(sys.argv) > 1:
+        if len(sys.argv) < 2:
+            sys.exit('Usage: %s as-number' % sys.argv[0])
+        asn = ''.join(c for c in sys.argv[1] if c in digits)
+        search(asn)
+    else:
+        main()
